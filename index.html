@@ -209,6 +209,8 @@
 
 <script>
   const GEOJSON_FILE = 'PSGgeojson.geojson';
+  const DF_FILE = 'PSGdf.geojson';
+  const CB_FILE = 'PSGcb.geojson';
 
   const conductorColors = {
     PIC:  '#7b1fa2',
@@ -325,6 +327,64 @@
 
     tbody.innerHTML = rows || `<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>`;
   }
+  
+  function makeDevicePopup(feature, type){
+  const p = feature.properties || {};
+  const icon = type === 'DF' ? '🔌' : '🧲';
+
+  return `
+    <div class="popup-title">${icon} ${type} : ${escapeHtml(p.FACILITYID || p.TAG || '-')}</div>
+    <div class="popup-line"><b>TAG:</b> ${escapeHtml(p.TAG || '-')}</div>
+    <div class="popup-line"><b>FACILITYID:</b> ${escapeHtml(p.FACILITYID || '-')}</div>
+    <div class="popup-line"><b>FEEDERID:</b> ${escapeHtml(p.FEEDERID || '-')}</div>
+    <div class="popup-line"><b>LOCATION:</b> ${escapeHtml(p.LOCATION || '-')}</div>
+    <div class="popup-line"><b>OPERATIONT:</b> ${escapeHtml(p.OPERATIONT || '-')}</div>
+    <div class="popup-line"><b>PRESENTPOS:</b> ${escapeHtml(p.PRESENTPOS || '-')}</div>
+    <div class="popup-line"><b>NORMALSTAT:</b> ${escapeHtml(p.NORMALSTAT || '-')}</div>
+    <div class="popup-line"><b>MAXCONTINU:</b> ${escapeHtml(p.MAXCONTINU || '-')}</div>
+    <div class="popup-line"><b>OPVOLTINT:</b> ${escapeHtml(p.OPVOLTINT || '-')}</div>
+  `;
+}
+
+function loadPointLayer(fileName, layerName, color, type){
+  return fetch(fileName)
+    .then(res => {
+      if(!res.ok) throw new Error('ไม่พบไฟล์: ' + fileName);
+      return res.json();
+    })
+    .then(data => {
+      const layer = L.geoJSON(data, {
+        pointToLayer: function(feature, latlng){
+          return L.circleMarker(latlng, {
+            radius: type === 'CB' ? 7 : 5,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.9,
+            weight: 2
+          });
+        },
+        onEachFeature: function(feature, layer){
+          layer.bindPopup(makeDevicePopup(feature, type));
+
+          const p = feature.properties || {};
+          const label = p.FACILITYID || p.TAG || type;
+
+          layer.bindTooltip(String(label), {
+            permanent: false,
+            direction: 'top',
+            sticky: true
+          });
+        }
+      }).addTo(map);
+
+      layerControl.addOverlay(layer, layerName);
+      return layer;
+    })
+    .catch(err => {
+      console.error(err);
+      alert(err.message || 'โหลด ' + fileName + ' ไม่สำเร็จ');
+    });
+}
 
   fetch(GEOJSON_FILE)
     .then(res => {
@@ -403,6 +463,9 @@
       console.error(err);
       alert(err.message || 'โหลด GeoJSON ไม่สำเร็จ');
     });
+    
+    loadPointLayer(DF_FILE, '🔌 Drop-out Fuse / DF', '#e53935', 'DF');
+    loadPointLayer(CB_FILE, '🧲 Circuit Breaker / CB', '#1e88e5', 'CB');
 </script>
 
 </body>
