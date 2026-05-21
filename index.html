@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <title>PEA 33kV GeoJSON Map</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+
+    .title-box {
+      position: absolute;
+      top: 14px;
+      left: 58px;
+      z-index: 999;
+      background: #ffffff;
+      padding: 10px 14px;
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.18);
+      font-weight: 800;
+      color: #3b185f;
+      border-left: 6px solid #7b1fa2;
+    }
+
+    .panel {
+      position: absolute;
+      top: 116px;
+      right: 14px;
+      width: 340px;
+      max-height: calc(100vh - 100px);
+      overflow: auto;
+      z-index: 999;
+      background: rgba(255,255,255,.96);
+      border-radius: 18px;
+      box-shadow: 0 6px 22px rgba(0,0,0,.22);
+      padding: 14px;
+      color: #222;
+    }
+
+    .panel h3 {
+      margin: 0 0 8px;
+      color: #5b167d;
+      font-size: 17px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stat-card {
+      background: linear-gradient(180deg,#fff,#faf5ff);
+      border: 1px solid #ead7ff;
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .stat-num {
+      font-size: 22px;
+      font-weight: 900;
+      color: #7b1fa2;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #eee;
+      padding: 6px 4px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f5ecff;
+      color: #4a126b;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 5px 0;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .legend-line {
+      width: 30px;
+      height: 4px;
+      border-radius: 99px;
+    }
+
+    .popup-title {
+      font-weight: 900;
+      color: #6b1fa7;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .popup-line {
+      font-size: 13px;
+      margin: 3px 0;
+    }
+
+    .popup-line b {
+      color: #333;
+    }
+
+    .muted {
+      color: #777;
+      font-size: 12px;
+    }
+
+    .leaflet-popup-content {
+      line-height: 1.45;
+    }
+
+    @media(max-width: 768px){
+      .panel {
+        left: 12px;
+        right: 12px;
+        top: auto;
+        bottom: 16px;
+        width: auto;
+        max-height: 42vh;
+      }
+
+      .title-box {
+        left: 52px;
+        right: 12px;
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="title-box">⚡ ระบบแสดงผล GeoJSON 33kV</div>
+
+<div id="map"></div>
+
+<div class="panel">
+  <h3>📊 รายละเอียด GeoJSON</h3>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-num" id="totalFeatures">0</div>
+      <div class="stat-label">จำนวนเส้นทั้งหมด</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="totalLength">0</div>
+      <div class="stat-label">ความยาวรวม กม.</div>
+    </div>
+  </div>
+
+  <h3>🎨 สีตามชนิด CONDUCTORT</h3>
+  <div id="legendBox"></div>
+
+  <h3 style="margin-top:14px;">📋 สรุปตามชนิดสาย</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>ชนิด</th>
+        <th>จำนวน</th>
+        <th>กม.</th>
+      </tr>
+    </thead>
+    <tbody id="summaryBody">
+      <tr><td colspan="3" class="muted">กำลังโหลด...</td></tr>
+    </tbody>
+  </table>
+
+  <div class="muted" style="margin-top:10px;">
+    คลิกที่เส้นบนแผนที่เพื่อดูรายละเอียด เช่น TAG, FEEDERID, LABELTEXT, CONDUCTORS และความยาว
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  const GEOJSON_FILE = 'PSGgeojson2.geojson';
+
+  const conductorColors = {
+    PIC:  '#7b1fa2',
+    ACSR: '#f57c00',
+    SAC:  '#0288d1',
+    AAC:  '#2e7d32',
+    AAAC: '#c2185b',
+    XLPE: '#455a64',
+    UNKNOWN: '#555555'
+  };
+
+  const map = L.map('map', {
+    zoomControl: true
+  }).setView([8.57, 99.25], 11);
+
+  const streetMap = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }
+  ).addTo(map);
+
+  const satelliteMap = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+      maxZoom: 19,
+      attribution: 'Tiles © Esri'
+    }
+  );
+
+  const darkMap = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    {
+      maxZoom: 19,
+      attribution: '&copy; CartoDB'
+    }
+  );
+
+  const layerControl = L.control.layers({
+    '🗺️ แผนที่ถนน': streetMap,
+    '🛰️ ดาวเทียม': satelliteMap,
+    '🌙 Dark Map': darkMap
+  }, {}, { collapsed: true }).addTo(map);
+
+  function escapeHtml(s){
+    return String(s ?? '')
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#039;');
+  }
+
+  function getConductorType(feature){
+    const p = feature.properties || {};
+    return String(p.CONDUCTORT || 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
+  }
+
+  function getColor(type){
+    return conductorColors[type] || conductorColors.UNKNOWN;
+  }
+
+  function getLengthMeter(feature){
+    const p = feature.properties || {};
+    return Number(p.MEASURELEN || p.SHAPE_LEN || 0) || 0;
+  }
+
+  function makePopup(feature){
+    const p = feature.properties || {};
+    const type = getConductorType(feature);
+    const lenM = getLengthMeter(feature);
+
+    return `
+      <div class="popup-title">⚡ ${escapeHtml(p.LABELTEXT || p.TAG || '33kV Line')}</div>
+      <div class="popup-line"><b>TAG:</b> ${escapeHtml(p.TAG || '-')}</div>
+      <div class="popup-line"><b>FEEDERID:</b> ${escapeHtml(p.FEEDERID || '-')}</div>
+      <div class="popup-line"><b>FEEDER PRE:</b> ${escapeHtml(p['FEEDER PRE'] || '-')}</div>
+      <div class="popup-line"><b>CONDUCTORT:</b> <span style="color:${getColor(type)};font-weight:900;">${escapeHtml(type)}</span></div>
+      <div class="popup-line"><b>CONDUCTORS:</b> ${escapeHtml(p.CONDUCTORS || '-')}</div>
+      <div class="popup-line"><b>NUMBERCOND:</b> ${escapeHtml(p.NUMBERCOND || '-')}</div>
+      <div class="popup-line"><b>LABELTEXT:</b> ${escapeHtml(p.LABELTEXT || '-')}</div>
+      <div class="popup-line"><b>MAINORLATE:</b> ${escapeHtml(p.MAINORLATE || '-')}</div>
+      <div class="popup-line"><b>OPVOLTINT:</b> ${escapeHtml(p.OPVOLTINT || '-')}</div>
+      <div class="popup-line"><b>ความยาว:</b> ${lenM.toLocaleString(undefined,{maximumFractionDigits:2})} ม.</div>
+    `;
+  }
+
+  function renderLegend(types){
+    const box = document.getElementById('legendBox');
+    box.innerHTML = types.map(type => `
+      <div class="legend-row">
+        <span class="legend-line" style="background:${getColor(type)};"></span>
+        <span>${escapeHtml(type)}</span>
+      </div>
+    `).join('');
+  }
+
+  function renderSummary(summary){
+    const tbody = document.getElementById('summaryBody');
+    const rows = Object.keys(summary).sort().map(type => {
+      const item = summary[type];
+      return `
+        <tr>
+          <td>
+            <span style="display:inline-block;width:22px;height:4px;border-radius:99px;background:${getColor(type)};vertical-align:middle;margin-right:6px;"></span>
+            <b>${escapeHtml(type)}</b>
+          </td>
+          <td>${item.count.toLocaleString()}</td>
+          <td>${(item.length / 1000).toLocaleString(undefined,{maximumFractionDigits:2})}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.innerHTML = rows || `<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>`;
+  }
+
+  fetch(GEOJSON_FILE)
+    .then(res => {
+      if(!res.ok) throw new Error('ไม่พบไฟล์ GeoJSON: ' + GEOJSON_FILE);
+      return res.json();
+    })
+    .then(data => {
+      const summary = {};
+      let totalLength = 0;
+
+      const geoLayer = L.geoJSON(data, {
+        style: function(feature){
+          const type = getConductorType(feature);
+          return {
+            color: getColor(type),
+            weight: 1.8,
+            opacity: 0.9
+          };
+        },
+
+        onEachFeature: function(feature, layer){
+          const type = getConductorType(feature);
+          const lenM = getLengthMeter(feature);
+
+          if(!summary[type]){
+            summary[type] = {
+              count: 0,
+              length: 0
+            };
+          }
+
+          summary[type].count += 1;
+          summary[type].length += lenM;
+          totalLength += lenM;
+
+          layer.bindPopup(makePopup(feature));
+
+          layer.on('mouseover', function(){
+            layer.setStyle({
+              weight: 4,
+              opacity: 1
+            });
+          });
+
+          layer.on('mouseout', function(){
+            layer.setStyle({
+              weight: 1.8,
+              opacity: 0.9
+            });
+          });
+        }
+      }).addTo(map);
+
+      layerControl.addOverlay(geoLayer, '⚡ ระบบจำหน่าย 33kV');
+
+      const types = Object.keys(summary).sort();
+
+      document.getElementById('totalFeatures').textContent =
+        (data.features || []).length.toLocaleString();
+
+      document.getElementById('totalLength').textContent =
+        (totalLength / 1000).toLocaleString(undefined,{maximumFractionDigits:2});
+
+      renderLegend(types);
+      renderSummary(summary);
+
+      try {
+        map.fitBounds(geoLayer.getBounds(), {
+          padding: [30, 30]
+        });
+      } catch(e) {
+        console.warn(e);
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      alert(err.message || 'โหลด GeoJSON ไม่สำเร็จ');
+    });
+</script>
+
+</body>
+</html>
