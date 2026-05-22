@@ -31,7 +31,7 @@ REQUIRED: A summary of the intentions with which the data set was developed.</ab
   <crs>
     <spatialrefsys nativeFormat="Wkt">
       <wkt></wkt>
-      <proj4></proj4>
+      <proj4>+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs</proj4>
       <srsid>0</srsid>
       <srid>0</srid>
       <authid></authid>
